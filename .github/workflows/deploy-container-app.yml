@@ -1,0 +1,123 @@
+name: Build And Deploy Container App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - '.github/workflows/deploy-container-app.yml'
+
+env:
+  IMAGE_NAME: chat-app
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2.1.1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+          username: ${{ secrets.AZURE_CONTAINER_REGISTRY_USERNAME }}
+          password: ${{ secrets.AZURE_CONTAINER_REGISTRY_PASSWORD }}
+
+      - name: Build and push Docker image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --file src/Dockerfile \
+            --tag ${{ secrets.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG} \
+            src
+          docker push ${{ secrets.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+
+      - name: Deploy image to Azure Container App
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          az containerapp update \
+            --name ${{ secrets.AZURE_CONTAINER_APP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG} \
+            --set-env-vars \
+              FOUNDRY_ENDPOINT="${{ secrets.FOUNDRY_ENDPOINT }}" \
+              gpt_endpoint="${{ secrets.GPT_ENDPOINT }}" \
+              embedding_endpoint="${{ secrets.EMBEDDING_ENDPOINT }}" \
+              phi_4_endpoint="${{ secrets.PHI_4_ENDPOINT }}"
+
+      - name: Verify Container App revision health
+        run: |
+          APP_NAME="${{ secrets.AZURE_CONTAINER_APP_NAME }}"
+          RG_NAME="${{ secrets.AZURE_RESOURCE_GROUP }}"
+
+          REVISION_NAME=$(az containerapp show \
+            --name "$APP_NAME" \
+            --resource-group "$RG_NAME" \
+            --query properties.latestRevisionName \
+            --output tsv)
+
+          if [[ -z "$REVISION_NAME" ]]; then
+            echo "Unable to determine latest revision name."
+            exit 1
+          fi
+
+          echo "Checking revision: $REVISION_NAME"
+
+          for attempt in {1..20}; do
+            HEALTH_STATE=$(az containerapp revision show \
+              --name "$APP_NAME" \
+              --resource-group "$RG_NAME" \
+              --revision "$REVISION_NAME" \
+              --query properties.healthState \
+              --output tsv)
+
+            PROVISIONING_STATE=$(az containerapp revision show \
+              --name "$APP_NAME" \
+              --resource-group "$RG_NAME" \
+              --revision "$REVISION_NAME" \
+              --query properties.provisioningState \
+              --output tsv)
+
+            RUNNING_STATE=$(az containerapp revision show \
+              --name "$APP_NAME" \
+              --resource-group "$RG_NAME" \
+              --revision "$REVISION_NAME" \
+              --query properties.runningState \
+              --output tsv)
+
+            echo "Attempt $attempt: health=$HEALTH_STATE provisioning=$PROVISIONING_STATE running=$RUNNING_STATE"
+
+            if [[ "$HEALTH_STATE" == "Healthy" && "$PROVISIONING_STATE" == "Provisioned" ]]; then
+              break
+            fi
+
+            if [[ "$attempt" -eq 20 ]]; then
+              echo "Container App revision did not become healthy in time."
+              exit 1
+            fi
+
+            sleep 15
+          done
+
+          APP_FQDN=$(az containerapp show \
+            --name "$APP_NAME" \
+            --resource-group "$RG_NAME" \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)
+
+          if [[ -n "$APP_FQDN" && "$APP_FQDN" != "null" ]]; then
+            echo "Probing health endpoint at https://$APP_FQDN/health"
+            curl --fail --silent --show-error --max-time 30 "https://$APP_FQDN/health" > /dev/null
+          else
+            echo "Ingress FQDN not configured; skipping HTTP health probe."
+          fi

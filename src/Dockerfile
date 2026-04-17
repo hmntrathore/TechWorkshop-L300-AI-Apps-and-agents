@@ -1,8 +1,12 @@
 FROM python:3.12-slim
 
+ARG DEBIAN_FRONTEND=noninteractive
+
 # Install uv and upgrade system packages to reduce vulnerabilities
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set work directory
 WORKDIR /app
