@@ -12,7 +12,7 @@ azure_endpoint = os.environ.get("gpt_endpoint")
 gpt_deployment = os.environ.get("gpt_deployment")
 
 credential = DefaultAzureCredential()
-token_provider = get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
+token_provider = get_bearer_token_provider(credential, "https://ai.azure.com/.default")
 
 az_model_client = AzureOpenAI(
     azure_deployment=azure_deployment,

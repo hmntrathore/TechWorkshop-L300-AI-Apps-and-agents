@@ -13,7 +13,7 @@ api_version = os.getenv("gpt_api_version")
 
 # Initialize Azure OpenAI client for GPT model using managed identity
 credential = DefaultAzureCredential()
-token_provider = get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
+token_provider = get_bearer_token_provider(credential, "https://ai.azure.com/.default")
 
 client = AzureOpenAI(
     azure_endpoint=endpoint,

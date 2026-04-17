@@ -21,6 +21,7 @@ var aiFoundryName = 'aif-${uniqueString(resourceGroup().id)}'
 var aiProjectName = 'proj-${uniqueString(resourceGroup().id)}'
 var containerAppName = 'app-${uniqueString(resourceGroup().id)}'
 var containerAppEnvName = '${uniqueString(resourceGroup().id)}-cosu-cae'
+var containerAppWorkloadProfileName = 'standard-d4'
 var logAnalyticsName = '${uniqueString(resourceGroup().id)}-cosu-la'
 var appInsightsName = '${uniqueString(resourceGroup().id)}-cosu-ai'
 var registryName = '${uniqueString(resourceGroup().id)}cosureg'
@@ -36,7 +37,7 @@ var tags = {
 
 // Ensure the current resource group has the required tag via a subscription-scoped module
 module updateRgTags 'updateRgTags.bicep' = {
-  name: 'updateRgTags'
+  name: 'updateRgTags-${uniqueString(subscription().id, resourceGroup().name, location)}'
   scope: subscription()
   params: {
     rgName: resourceGroup().name
@@ -188,6 +189,14 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: containerAppEnvName
   location: location
   properties: {
+    workloadProfiles: [
+      {
+        name: containerAppWorkloadProfileName
+        workloadProfileType: 'D4'
+        minimumCount: 1
+        maximumCount: 1
+      }
+    ]
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
@@ -222,6 +231,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
   properties: {
     managedEnvironmentId: containerAppEnv.id
+    workloadProfileName: containerAppWorkloadProfileName
     configuration: {
       ingress: {
         external: true

@@ -24,7 +24,7 @@ endpoint = os.getenv("gpt_endpoint")
 deployment = os.getenv("gpt_deployment")
 api_version = os.getenv("gpt_api_version")
 credential = DefaultAzureCredential()
-token_provider = get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
+token_provider = get_bearer_token_provider(credential, "https://ai.azure.com/.default")
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))  # Go up 2 levels from src/tools/ to root
